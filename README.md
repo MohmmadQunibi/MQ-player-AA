@@ -28,7 +28,7 @@ This is best for playback control, not for full browsing of another app's librar
 ## Download
 
 GitHub Releases is the **only official source** for MQ Player. Always download the latest APK
-from the [Releases page](https://github.com/MohmmadQunibi/mq-player/releases) to make sure you
+from the [Releases page](https://github.com/MohmmadQunibi/mq-player-aa/releases) to make sure you
 have a trusted, up-to-date build.
 
 ## Run
