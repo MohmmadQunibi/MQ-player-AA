@@ -43,6 +43,8 @@ data class ActiveMediaState(
     val canSkipNext: Boolean = false,
     val canSeekBackward: Boolean = false,
     val canSeekForward: Boolean = false,
+    val positionMs: Long? = null,
+    val durationMs: Long? = null,
     val activeSessionCount: Int = 0,
     val availableSessions: List<String> = emptyList(),
     val sessionInfos: List<SessionInfo> = emptyList(),
@@ -184,6 +186,10 @@ object ActiveMediaRepository {
         seekBy(deltaMillis = FORWARD_SKIP_MS)
     }
 
+    fun seekTo(positionMs: Long) {
+        currentController?.transportControls?.seekTo(positionMs)
+    }
+
     fun switchToSession(mediaId: String) {
         val packageName = mediaId.removePrefix(SESSION_MEDIA_ID_PREFIX)
         val controller = activeControllers.find { it.packageName == packageName } ?: return
@@ -233,6 +239,10 @@ object ActiveMediaRepository {
         val actions = playbackState?.actions ?: 0L
         val appLabel = controller?.packageName?.let(::resolveAppLabel)
         val currentPlaybackState = playbackState?.state ?: PlaybackState.STATE_NONE
+        val rawPosition = playbackState?.position ?: -1L
+        val positionMs = if (rawPosition >= 0) rawPosition else null
+        val rawDuration = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        val durationMs = if (rawDuration > 0) rawDuration else null
 
         publishState(
             ActiveMediaState(
@@ -264,6 +274,8 @@ object ActiveMediaRepository {
                     PlaybackState.ACTION_SEEK_TO,
                     PlaybackState.ACTION_FAST_FORWARD,
                 ),
+                positionMs = positionMs,
+                durationMs = durationMs,
                 activeSessionCount = activeControllers.size,
                 availableSessions = activeControllers.map(::formatSessionSummary),
                 sessionInfos = activeControllers.map(::buildSessionInfo),

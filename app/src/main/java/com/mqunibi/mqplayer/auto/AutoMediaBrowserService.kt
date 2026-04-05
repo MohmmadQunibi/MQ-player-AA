@@ -61,6 +61,10 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
                         ActiveMediaRepository.seekForward30Seconds()
                     }
 
+                    override fun onSeekTo(pos: Long) {
+                        ActiveMediaRepository.seekTo(pos)
+                    }
+
                     override fun onCustomAction(action: String?, extras: Bundle?) {
                         when (action) {
                             ACTION_SEEK_BACK_10 -> ActiveMediaRepository.seekBackward10Seconds()
@@ -215,6 +219,7 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, subtitle)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, subtitle)
+            .apply { state.durationMs?.let { putLong(MediaMetadataCompat.METADATA_KEY_DURATION, it) } }
             .build()
     }
 
@@ -238,6 +243,9 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
         if (state.canSeekForward) {
             actions = actions or PlaybackStateCompat.ACTION_FAST_FORWARD
         }
+        if (state.canSeekBackward || state.canSeekForward) {
+            actions = actions or PlaybackStateCompat.ACTION_SEEK_TO
+        }
         if (state.permissionGranted && state.sessionInfos.isNotEmpty()) {
             actions = actions or PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
         }
@@ -252,9 +260,11 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
             else -> PlaybackStateCompat.STATE_NONE
         }
 
+        val position = state.positionMs ?: PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN
+
         return PlaybackStateCompat.Builder()
             .setActions(actions)
-            .setState(compatState, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1f)
+            .setState(compatState, position, 1f)
             .apply {
                 if (state.permissionGranted && state.canSeekBackward) {
                     addCustomAction(
