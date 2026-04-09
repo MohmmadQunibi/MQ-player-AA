@@ -12,6 +12,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +40,7 @@ internal fun MediaControllerScreen(
     onSkipNext: () -> Unit,
     onUndo10Seconds: () -> Unit,
     onSkip30Seconds: () -> Unit,
+    onToggleLoop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -51,6 +54,14 @@ internal fun MediaControllerScreen(
         Text(text = stringResourceSafe(R.string.screen_subtitle))
 
         if (!state.permissionGranted) {
+            MessageCard(
+                title = stringResourceSafe(R.string.grant_access_title),
+                body = stringResourceSafe(R.string.grant_access_body),
+            ) {
+                Button(onClick = onGrantAccess) {
+                    Text(text = stringResourceSafe(R.string.grant_access_button))
+                }
+            }
             if (showRestrictedSettingsHint) {
                 MessageCard(
                     title = stringResourceSafe(R.string.restricted_settings_title),
@@ -59,14 +70,6 @@ internal fun MediaControllerScreen(
                     Button(onClick = onAllowRestrictedSettings) {
                         Text(text = stringResourceSafe(R.string.restricted_settings_button))
                     }
-                }
-            }
-            MessageCard(
-                title = stringResourceSafe(R.string.grant_access_title),
-                body = stringResourceSafe(R.string.grant_access_body),
-            ) {
-                Button(onClick = onGrantAccess) {
-                    Text(text = stringResourceSafe(R.string.grant_access_button))
                 }
             }
         }
@@ -126,6 +129,13 @@ internal fun MediaControllerScreen(
                 IconButton(onClick = onSkipNext, enabled = state.canSkipNext) {
                     Icon(painterResource(R.drawable.ic_skip_next), stringResourceSafe(R.string.next_button))
                 }
+                IconButton(onClick = onToggleLoop, enabled = state.permissionGranted) {
+                    Icon(
+                        painter = painterResource(if (state.loopEnabled) R.drawable.ic_repeat_on else R.drawable.ic_repeat),
+                        contentDescription = stringResourceSafe(R.string.loop_button),
+                        tint = LocalContentColor.current,
+                    )
+                }
             }
         }
     }
@@ -161,6 +171,7 @@ private fun MediaControllerScreenPreview() {
             onSkipNext = {},
             onUndo10Seconds = {},
             onSkip30Seconds = {},
+            onToggleLoop = {},
         )
     }
 }
@@ -180,7 +191,7 @@ private fun MediaControllerScreenRestrictedPreview() {
             onSkipNext = {},
             onUndo10Seconds = {},
             onSkip30Seconds = {},
+            onToggleLoop = {},
         )
     }
 }
-

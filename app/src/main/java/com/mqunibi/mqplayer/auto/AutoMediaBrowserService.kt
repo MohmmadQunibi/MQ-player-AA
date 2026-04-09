@@ -3,12 +3,13 @@ package com.mqunibi.mqplayer.auto
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
-import androidx.media.MediaBrowserServiceCompat
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import androidx.core.net.toUri
+import androidx.media.MediaBrowserServiceCompat
 import com.mqunibi.mqplayer.MainActivity
 import com.mqunibi.mqplayer.R
 import com.mqunibi.mqplayer.media.ActiveMediaRepository
@@ -20,20 +21,16 @@ private const val ROOT_ID = "mq_player_root"
 private const val CURRENT_ITEM_ID = "current_active_session"
 private const val ACTION_SEEK_BACK_10 = "com.mqunibi.mqplayer.ACTION_SEEK_BACK_10"
 private const val ACTION_SEEK_FORWARD_30 = "com.mqunibi.mqplayer.ACTION_SEEK_FORWARD_30"
+private const val ACTION_TOGGLE_LOOP = "com.mqunibi.mqplayer.ACTION_TOGGLE_LOOP"
 
 class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaRepository.Observer {
     private lateinit var mediaSession: MediaSessionCompat
 
-    @Suppress("DEPRECATION")
     override fun onCreate() {
         super.onCreate()
         ActiveMediaRepository.initialize(applicationContext)
 
         mediaSession = MediaSessionCompat(this, getString(R.string.auto_service_label)).apply {
-            setFlags(
-                MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
-                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS,
-            )
             setSessionActivity(createSessionActivity())
             setCallback(
                 object : MediaSessionCompat.Callback() {
@@ -69,6 +66,7 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
                         when (action) {
                             ACTION_SEEK_BACK_10 -> ActiveMediaRepository.seekBackward10Seconds()
                             ACTION_SEEK_FORWARD_30 -> ActiveMediaRepository.seekForward30Seconds()
+                            ACTION_TOGGLE_LOOP -> ActiveMediaRepository.toggleLoop()
                         }
                     }
 
@@ -120,6 +118,7 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
                     else -> state.sessionInfos.map { buildSessionItem(it) }.toMutableList()
                 }
             }
+
             else -> mutableListOf()
         }
         result.sendResult(items)
@@ -191,6 +190,12 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
             .setTitle(title)
             .setSubtitle(subtitle)
             .setDescription(state.playbackLabel)
+            .apply {
+                when {
+                    state.albumArt != null -> setIconBitmap(state.albumArt)
+                    state.albumArtUri != null -> setIconUri(state.albumArtUri.toUri())
+                }
+            }
             .build()
 
         return MediaBrowserCompat.MediaItem(
@@ -219,39 +224,43 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, subtitle)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, subtitle)
-            .apply { state.durationMs?.let { putLong(MediaMetadataCompat.METADATA_KEY_DURATION, it) } }
+            .apply {
+                state.durationMs?.let {
+                    putLong(
+                        MediaMetadataCompat.METADATA_KEY_DURATION,
+                        it
+                    )
+                }
+            }
+            .apply {
+                when {
+                    state.albumArt != null -> {
+                        putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, state.albumArt)
+                        putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, state.albumArt)
+                    }
+
+                    state.albumArtUri != null -> {
+                        putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, state.albumArtUri)
+                        putString(
+                            MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI,
+                            state.albumArtUri
+                        )
+                    }
+                }
+            }
             .build()
     }
 
     private fun buildPlaybackState(state: ActiveMediaState): PlaybackStateCompat {
-        var actions = 0L
-        if (state.canPlay) {
-            actions = actions or PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_PAUSE
-        }
-        if (state.canPause) {
-            actions = actions or PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_PLAY_PAUSE
-        }
-        if (state.canSkipPrevious) {
-            actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-        }
-        if (state.canSkipNext) {
-            actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_NEXT
-        }
-        if (state.canSeekBackward) {
-            actions = actions or PlaybackStateCompat.ACTION_REWIND
-        }
-        if (state.canSeekForward) {
-            actions = actions or PlaybackStateCompat.ACTION_FAST_FORWARD
-        }
-        if (state.canSeekBackward || state.canSeekForward) {
-            actions = actions or PlaybackStateCompat.ACTION_SEEK_TO
-        }
-        if (state.permissionGranted && state.sessionInfos.isNotEmpty()) {
-            actions = actions or PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID
-        }
-        if (!state.permissionGranted) {
-            actions = 0L
-        }
+        val actions = if (!state.permissionGranted) 0L else
+            (if (state.canPlay) PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_PAUSE else 0L) or
+                    (if (state.canPause) PlaybackStateCompat.ACTION_PAUSE or PlaybackStateCompat.ACTION_PLAY_PAUSE else 0L) or
+                    (if (state.canSkipPrevious) PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS else 0L) or
+                    (if (state.canSkipNext) PlaybackStateCompat.ACTION_SKIP_TO_NEXT else 0L) or
+                    (if (state.canSeekBackward) PlaybackStateCompat.ACTION_REWIND else 0L) or
+                    (if (state.canSeekForward) PlaybackStateCompat.ACTION_FAST_FORWARD else 0L) or
+                    (if (state.canSeekBackward || state.canSeekForward) PlaybackStateCompat.ACTION_SEEK_TO else 0L) or
+                    (if (state.sessionInfos.isNotEmpty()) PlaybackStateCompat.ACTION_PLAY_FROM_MEDIA_ID else 0L)
 
         val compatState = when {
             !state.permissionGranted -> PlaybackStateCompat.STATE_NONE
@@ -281,6 +290,15 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
                             ACTION_SEEK_FORWARD_30,
                             getString(R.string.skip_30_seconds_button),
                             R.drawable.ic_forward_30,
+                        ).build(),
+                    )
+                }
+                if (state.permissionGranted) {
+                    addCustomAction(
+                        PlaybackStateCompat.CustomAction.Builder(
+                            ACTION_TOGGLE_LOOP,
+                            getString(R.string.loop_button),
+                            if (state.loopEnabled) R.drawable.ic_repeat_on else R.drawable.ic_repeat,
                         ).build(),
                     )
                 }

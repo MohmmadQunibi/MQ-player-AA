@@ -45,10 +45,13 @@ data class ActiveMediaState(
     val canSeekForward: Boolean = false,
     val positionMs: Long? = null,
     val durationMs: Long? = null,
+    val albumArt: android.graphics.Bitmap? = null,
+    val albumArtUri: String? = null,
     val activeSessionCount: Int = 0,
     val availableSessions: List<String> = emptyList(),
     val sessionInfos: List<SessionInfo> = emptyList(),
     val errorMessage: String? = null,
+    val loopEnabled: Boolean = false,
 )
 
 object ActiveMediaRepository {
@@ -71,6 +74,8 @@ object ActiveMediaRepository {
     private var currentController: MediaController? = null
     private var activeSessionsListenerRegistered = false
     private var userSelectedPackageName: String? = null
+    private var loopEnabled = false
+    private var previousPlaybackState = PlaybackState.STATE_NONE
 
     private val activeSessionsChangedListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
         handleControllersChanged(controllers.orEmpty(), permissionGranted = isNotificationListenerEnabled())
@@ -78,6 +83,13 @@ object ActiveMediaRepository {
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onPlaybackStateChanged(state: PlaybackState?) {
+            val newState = state?.state ?: PlaybackState.STATE_NONE
+            if (loopEnabled &&
+                previousPlaybackState == PlaybackState.STATE_PLAYING &&
+                newState == PlaybackState.STATE_STOPPED) {
+                mainHandler.postDelayed({ play() }, 300)
+            }
+            previousPlaybackState = newState
             publishCurrentState(permissionGranted = isNotificationListenerEnabled())
         }
 
@@ -190,6 +202,11 @@ object ActiveMediaRepository {
         currentController?.transportControls?.seekTo(positionMs)
     }
 
+    fun toggleLoop() {
+        loopEnabled = !loopEnabled
+        publishCurrentState(permissionGranted = isNotificationListenerEnabled())
+    }
+
     fun switchToSession(mediaId: String) {
         val packageName = mediaId.removePrefix(SESSION_MEDIA_ID_PREFIX)
         val controller = activeControllers.find { it.packageName == packageName } ?: return
@@ -243,6 +260,13 @@ object ActiveMediaRepository {
         val positionMs = if (rawPosition >= 0) rawPosition else null
         val rawDuration = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
         val durationMs = if (rawDuration > 0) rawDuration else null
+        val albumArt = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+        val albumArtUri = metadata?.getString(MediaMetadata.METADATA_KEY_ART_URI)
+            ?: metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI)
+            ?: metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI)
+            ?: controller?.metadata?.description?.iconUri?.toString()
 
         publishState(
             ActiveMediaState(
@@ -276,10 +300,13 @@ object ActiveMediaRepository {
                 ),
                 positionMs = positionMs,
                 durationMs = durationMs,
+                albumArt = albumArt,
+                albumArtUri = albumArtUri,
                 activeSessionCount = activeControllers.size,
                 availableSessions = activeControllers.map(::formatSessionSummary),
                 sessionInfos = activeControllers.map(::buildSessionInfo),
                 errorMessage = null,
+                loopEnabled = loopEnabled,
             ),
         )
     }
@@ -316,6 +343,7 @@ object ActiveMediaRepository {
         currentController?.unregisterCallback(controllerCallback)
         currentController = newController
         currentController?.registerCallback(controllerCallback, mainHandler)
+        previousPlaybackState = PlaybackState.STATE_NONE
     }
 
     private fun registerActiveSessionsListener() {
