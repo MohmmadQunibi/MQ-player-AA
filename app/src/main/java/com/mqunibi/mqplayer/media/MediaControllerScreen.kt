@@ -54,6 +54,14 @@ internal fun MediaControllerScreen(
         Text(text = stringResourceSafe(R.string.screen_subtitle))
 
         if (!state.permissionGranted) {
+            MessageCard(
+                title = stringResourceSafe(R.string.grant_access_title),
+                body = stringResourceSafe(R.string.grant_access_body),
+            ) {
+                Button(onClick = onGrantAccess) {
+                    Text(text = stringResourceSafe(R.string.grant_access_button))
+                }
+            }
             if (showRestrictedSettingsHint) {
                 MessageCard(
                     title = stringResourceSafe(R.string.restricted_settings_title),
@@ -62,14 +70,6 @@ internal fun MediaControllerScreen(
                     Button(onClick = onAllowRestrictedSettings) {
                         Text(text = stringResourceSafe(R.string.restricted_settings_button))
                     }
-                }
-            }
-            MessageCard(
-                title = stringResourceSafe(R.string.grant_access_title),
-                body = stringResourceSafe(R.string.grant_access_body),
-            ) {
-                Button(onClick = onGrantAccess) {
-                    Text(text = stringResourceSafe(R.string.grant_access_button))
                 }
             }
         }

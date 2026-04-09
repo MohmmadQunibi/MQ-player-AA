@@ -7,8 +7,8 @@
     <string name="grant_access_title">Enable notification access</string>
     <string name="grant_access_body">MQ Player needs notification listener access to discover and control the active media session on your phone.</string>
     <string name="grant_access_button">Open notification access</string>
-    <string name="restricted_settings_title">Allow restricted settings first</string>
-    <string name="restricted_settings_body">Because this app was installed outside of the Play Store, Android blocks notification listener access by default. You need to allow restricted settings for MQ Player before you can enable notification access.\n\nTap the button below, then open the three-dot menu (⋮) and choose "Allow restricted settings".</string>
+    <string name="restricted_settings_title">Restricted setting warning?</string>
+    <string name="restricted_settings_body">If Android showed a \"Restricted setting\" warning when you tried to enable notification access, you need to allow restricted settings for MQ Player first.\n\nTap the button below, then open the three-dot menu (⋮) and choose \"Allow restricted settings\". Then return here and tap \"Open notification access\" again.</string>
     <string name="restricted_settings_button">Open app settings</string>
     <string name="refresh_button">Refresh sessions</string>
     <string name="controls_title">Transport controls</string>
