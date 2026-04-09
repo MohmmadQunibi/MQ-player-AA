@@ -21,6 +21,7 @@ private const val ROOT_ID = "mq_player_root"
 private const val CURRENT_ITEM_ID = "current_active_session"
 private const val ACTION_SEEK_BACK_10 = "com.mqunibi.mqplayer.ACTION_SEEK_BACK_10"
 private const val ACTION_SEEK_FORWARD_30 = "com.mqunibi.mqplayer.ACTION_SEEK_FORWARD_30"
+private const val ACTION_TOGGLE_LOOP = "com.mqunibi.mqplayer.ACTION_TOGGLE_LOOP"
 
 class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaRepository.Observer {
     private lateinit var mediaSession: MediaSessionCompat
@@ -70,6 +71,7 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
                         when (action) {
                             ACTION_SEEK_BACK_10 -> ActiveMediaRepository.seekBackward10Seconds()
                             ACTION_SEEK_FORWARD_30 -> ActiveMediaRepository.seekForward30Seconds()
+                            ACTION_TOGGLE_LOOP -> ActiveMediaRepository.toggleLoop()
                         }
                     }
 
@@ -300,6 +302,15 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
                             ACTION_SEEK_FORWARD_30,
                             getString(R.string.skip_30_seconds_button),
                             R.drawable.ic_forward_30,
+                        ).build(),
+                    )
+                }
+                if (state.permissionGranted) {
+                    addCustomAction(
+                        PlaybackStateCompat.CustomAction.Builder(
+                            ACTION_TOGGLE_LOOP,
+                            getString(R.string.loop_button),
+                            if (state.loopEnabled) R.drawable.ic_repeat_on else R.drawable.ic_repeat,
                         ).build(),
                     )
                 }

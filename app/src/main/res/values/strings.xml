@@ -18,6 +18,7 @@
     <string name="next_button">Next</string>
     <string name="undo_10_seconds_button">Undo 10s</string>
     <string name="skip_30_seconds_button">Skip 30s</string>
+    <string name="loop_button">Loop</string>
     <string name="status_title">Current active session</string>
     <string name="status_idle">No active media session found</string>
     <string name="status_hint">Start playback in Spotify, YouTube Music, Pocket Casts, or another media app, then return here or open Android Auto.</string>

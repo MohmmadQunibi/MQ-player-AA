@@ -181,6 +181,7 @@ class MainActivity : ComponentActivity() {
                                 onSkipNext = ActiveMediaRepository::skipToNext,
                                 onUndo10Seconds = ActiveMediaRepository::seekBackward10Seconds,
                                 onSkip30Seconds = ActiveMediaRepository::seekForward30Seconds,
+                                onToggleLoop = ActiveMediaRepository::toggleLoop,
                             )
                             AppScreen.SETTINGS -> SettingsScreen(
                                 settingsState = settingsState,

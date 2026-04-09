@@ -12,6 +12,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,6 +40,7 @@ internal fun MediaControllerScreen(
     onSkipNext: () -> Unit,
     onUndo10Seconds: () -> Unit,
     onSkip30Seconds: () -> Unit,
+    onToggleLoop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -126,6 +129,14 @@ internal fun MediaControllerScreen(
                 IconButton(onClick = onSkipNext, enabled = state.canSkipNext) {
                     Icon(painterResource(R.drawable.ic_skip_next), stringResourceSafe(R.string.next_button))
                 }
+                IconButton(onClick = onToggleLoop, enabled = state.permissionGranted) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_repeat),
+                        contentDescription = stringResourceSafe(R.string.loop_button),
+                        tint = if (state.loopEnabled) MaterialTheme.colorScheme.primary
+                               else LocalContentColor.current,
+                    )
+                }
             }
         }
     }
@@ -161,6 +172,7 @@ private fun MediaControllerScreenPreview() {
             onSkipNext = {},
             onUndo10Seconds = {},
             onSkip30Seconds = {},
+            onToggleLoop = {},
         )
     }
 }
@@ -180,6 +192,7 @@ private fun MediaControllerScreenRestrictedPreview() {
             onSkipNext = {},
             onUndo10Seconds = {},
             onSkip30Seconds = {},
+            onToggleLoop = {},
         )
     }
 }

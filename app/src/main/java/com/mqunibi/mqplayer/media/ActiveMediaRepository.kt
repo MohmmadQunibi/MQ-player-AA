@@ -51,6 +51,7 @@ data class ActiveMediaState(
     val availableSessions: List<String> = emptyList(),
     val sessionInfos: List<SessionInfo> = emptyList(),
     val errorMessage: String? = null,
+    val loopEnabled: Boolean = false,
 )
 
 object ActiveMediaRepository {
@@ -73,6 +74,8 @@ object ActiveMediaRepository {
     private var currentController: MediaController? = null
     private var activeSessionsListenerRegistered = false
     private var userSelectedPackageName: String? = null
+    private var loopEnabled = false
+    private var previousPlaybackState = PlaybackState.STATE_NONE
 
     private val activeSessionsChangedListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
         handleControllersChanged(controllers.orEmpty(), permissionGranted = isNotificationListenerEnabled())
@@ -80,6 +83,13 @@ object ActiveMediaRepository {
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onPlaybackStateChanged(state: PlaybackState?) {
+            val newState = state?.state ?: PlaybackState.STATE_NONE
+            if (loopEnabled &&
+                previousPlaybackState == PlaybackState.STATE_PLAYING &&
+                newState == PlaybackState.STATE_STOPPED) {
+                mainHandler.postDelayed({ play() }, 300)
+            }
+            previousPlaybackState = newState
             publishCurrentState(permissionGranted = isNotificationListenerEnabled())
         }
 
@@ -192,6 +202,11 @@ object ActiveMediaRepository {
         currentController?.transportControls?.seekTo(positionMs)
     }
 
+    fun toggleLoop() {
+        loopEnabled = !loopEnabled
+        publishCurrentState(permissionGranted = isNotificationListenerEnabled())
+    }
+
     fun switchToSession(mediaId: String) {
         val packageName = mediaId.removePrefix(SESSION_MEDIA_ID_PREFIX)
         val controller = activeControllers.find { it.packageName == packageName } ?: return
@@ -291,6 +306,7 @@ object ActiveMediaRepository {
                 availableSessions = activeControllers.map(::formatSessionSummary),
                 sessionInfos = activeControllers.map(::buildSessionInfo),
                 errorMessage = null,
+                loopEnabled = loopEnabled,
             ),
         )
     }
@@ -327,6 +343,7 @@ object ActiveMediaRepository {
         currentController?.unregisterCallback(controllerCallback)
         currentController = newController
         currentController?.registerCallback(controllerCallback, mainHandler)
+        previousPlaybackState = PlaybackState.STATE_NONE
     }
 
     private fun registerActiveSessionsListener() {
