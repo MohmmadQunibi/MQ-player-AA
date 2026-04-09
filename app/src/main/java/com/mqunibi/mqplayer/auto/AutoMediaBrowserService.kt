@@ -2,6 +2,7 @@ package com.mqunibi.mqplayer.auto
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.media.MediaBrowserServiceCompat
 import android.support.v4.media.MediaBrowserCompat
@@ -191,6 +192,12 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
             .setTitle(title)
             .setSubtitle(subtitle)
             .setDescription(state.playbackLabel)
+            .apply {
+                when {
+                    state.albumArt != null -> setIconBitmap(state.albumArt)
+                    state.albumArtUri != null -> setIconUri(Uri.parse(state.albumArtUri))
+                }
+            }
             .build()
 
         return MediaBrowserCompat.MediaItem(
@@ -220,6 +227,18 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
             .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, subtitle)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, subtitle)
             .apply { state.durationMs?.let { putLong(MediaMetadataCompat.METADATA_KEY_DURATION, it) } }
+            .apply {
+                when {
+                    state.albumArt != null -> {
+                        putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, state.albumArt)
+                        putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, state.albumArt)
+                    }
+                    state.albumArtUri != null -> {
+                        putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, state.albumArtUri)
+                        putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI, state.albumArtUri)
+                    }
+                }
+            }
             .build()
     }
 
