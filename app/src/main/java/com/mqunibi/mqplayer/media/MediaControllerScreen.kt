@@ -131,10 +131,9 @@ internal fun MediaControllerScreen(
                 }
                 IconButton(onClick = onToggleLoop, enabled = state.permissionGranted) {
                     Icon(
-                        painter = painterResource(R.drawable.ic_repeat),
+                        painter = painterResource(if (state.loopEnabled) R.drawable.ic_repeat_on else R.drawable.ic_repeat),
                         contentDescription = stringResourceSafe(R.string.loop_button),
-                        tint = if (state.loopEnabled) MaterialTheme.colorScheme.primary
-                               else LocalContentColor.current,
+                        tint = LocalContentColor.current,
                     )
                 }
             }
