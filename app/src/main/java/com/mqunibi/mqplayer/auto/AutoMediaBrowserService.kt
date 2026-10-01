@@ -23,6 +23,11 @@ private const val ACTION_SEEK_BACK_10 = "com.mqunibi.mqplayer.ACTION_SEEK_BACK_1
 private const val ACTION_SEEK_FORWARD_30 = "com.mqunibi.mqplayer.ACTION_SEEK_FORWARD_30"
 private const val ACTION_TOGGLE_LOOP = "com.mqunibi.mqplayer.ACTION_TOGGLE_LOOP"
 
+// Only advertise the session while another app's media is being mirrored, so lock screens
+// don't show an MQ Player media card when nothing is playing.
+internal fun hasMirroredSession(state: ActiveMediaState): Boolean =
+    state.permissionGranted && state.currentPackageName != null
+
 class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaRepository.Observer {
     private lateinit var mediaSession: MediaSessionCompat
 
@@ -85,7 +90,6 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
                     }
                 },
             )
-            isActive = true
         }
         sessionToken = mediaSession.sessionToken
         ActiveMediaRepository.addObserver(this)
@@ -101,7 +105,12 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
         clientPackageName: String,
         clientUid: Int,
         rootHints: Bundle?,
-    ): BrowserRoot {
+    ): BrowserRoot? {
+        // System UI asks for a "recent" root to build lock screen resume cards. MQ Player only
+        // mirrors other apps, so it has nothing of its own to resume — opt out.
+        if (rootHints?.getBoolean(BrowserRoot.EXTRA_RECENT) == true) {
+            return null
+        }
         return BrowserRoot(ROOT_ID, Bundle())
     }
 
@@ -127,7 +136,7 @@ class AutoMediaBrowserService : MediaBrowserServiceCompat(), ActiveMediaReposito
     override fun onStateChanged(state: ActiveMediaState) {
         mediaSession.setMetadata(buildMetadata(state))
         mediaSession.setPlaybackState(buildPlaybackState(state))
-        mediaSession.isActive = true
+        mediaSession.isActive = hasMirroredSession(state)
         notifyChildrenChanged(ROOT_ID)
     }
 
