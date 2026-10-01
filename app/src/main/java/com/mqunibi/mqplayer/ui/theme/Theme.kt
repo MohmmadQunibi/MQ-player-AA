@@ -3,41 +3,18 @@ package com.mqunibi.mqplayer.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.mqunibi.mqplayer.settings.ThemeMode
-
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
-)
 
 @Composable
 fun MQPlayerTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
+    seedColor: Color? = null,
+    content: @Composable () -> Unit,
 ) {
     val darkTheme = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -46,18 +23,21 @@ fun MQPlayerTheme(
     }
 
     val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        // Album art seed takes priority
+        seedColor != null -> seedColorScheme(seedColor, darkTheme)
+        // System dynamic color fallback (Android 12+)
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        // Static Obsidian fallback
+        darkTheme -> ObsidianDark
+        else -> ObsidianLight
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
-        content = content
+        content = content,
     )
 }

@@ -25,7 +25,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,15 +39,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.core.net.toUri
+import androidx.palette.graphics.Palette
 import com.mqunibi.mqplayer.media.ActiveMediaRepository
 import com.mqunibi.mqplayer.media.MediaControllerScreen
 import com.mqunibi.mqplayer.settings.AppSettingsRepository
 import com.mqunibi.mqplayer.settings.SettingsScreen
 import com.mqunibi.mqplayer.ui.stringResourceSafe
 import com.mqunibi.mqplayer.ui.theme.MQPlayerTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class AppScreen { PLAYER, SETTINGS }
 
@@ -61,6 +69,23 @@ class MainActivity : ComponentActivity() {
             var currentScreen by rememberSaveable { mutableStateOf(AppScreen.PLAYER) }
 
             val scope = rememberCoroutineScope()
+
+            // Extract dominant color from album art to seed the theme
+            var rawSeedColor by remember { mutableStateOf<Color?>(null) }
+            LaunchedEffect(mediaState.albumArt) {
+                val bitmap = mediaState.albumArt
+                rawSeedColor = if (bitmap != null) {
+                    withContext(Dispatchers.Default) {
+                        val palette = Palette.from(bitmap).generate()
+                        val swatch = palette.vibrantSwatch
+                            ?: palette.dominantSwatch
+                            ?: palette.lightVibrantSwatch
+                            ?: palette.mutedSwatch
+                        swatch?.rgb?.let { Color(it) }
+                    }
+                } else null
+            }
+
             var latestRelease by remember { mutableStateOf<Pair<String, String>?>(null) }
             var isCheckingUpdate by remember { mutableStateOf(false) }
             var showUpdateDialog by remember { mutableStateOf(false) }
@@ -81,7 +106,15 @@ class MainActivity : ComponentActivity() {
                 if (hasUpdate) showUpdateDialog = true
             }
 
-            MQPlayerTheme(themeMode = settingsState.themeMode) {
+            // Animate seed color transitions smoothly (600ms) when track changes
+            val animatedSeed by animateColorAsState(
+                targetValue = rawSeedColor ?: Color.Transparent,
+                animationSpec = tween(600),
+                label = "seedColor",
+            )
+            val seedColor = if (rawSeedColor != null) animatedSeed else null
+
+            MQPlayerTheme(themeMode = settingsState.themeMode, seedColor = seedColor) {
                 if (showUpdateDialog && hasUpdate && updateUrl != null) {
                     AlertDialog(
                         onDismissRequest = { showUpdateDialog = false },
@@ -111,12 +144,19 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
                         TopAppBar(
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.background,
+                                titleContentColor = MaterialTheme.colorScheme.onBackground,
+                                navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                                actionIconContentColor = MaterialTheme.colorScheme.onBackground,
+                            ),
                             title = {
                                 Text(
                                     text = if (currentScreen == AppScreen.PLAYER)
                                         stringResourceSafe(R.string.app_name)
                                     else
                                         stringResourceSafe(R.string.settings_title),
+                                    style = MaterialTheme.typography.titleLarge,
                                 )
                             },
                             navigationIcon = {
@@ -182,6 +222,8 @@ class MainActivity : ComponentActivity() {
                                 onUndo10Seconds = ActiveMediaRepository::seekBackward10Seconds,
                                 onSkip30Seconds = ActiveMediaRepository::seekForward30Seconds,
                                 onToggleLoop = ActiveMediaRepository::toggleLoop,
+                                onSeekTo = ActiveMediaRepository::seekTo,
+                                onSwitchSession = ActiveMediaRepository::switchToSession,
                             )
                             AppScreen.SETTINGS -> SettingsScreen(
                                 settingsState = settingsState,

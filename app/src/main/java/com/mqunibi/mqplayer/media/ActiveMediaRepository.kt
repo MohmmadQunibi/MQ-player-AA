@@ -9,7 +9,11 @@ import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
+import android.support.v4.media.session.MediaControllerCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +21,8 @@ import java.util.concurrent.CopyOnWriteArraySet
 
 private const val FORWARD_SKIP_MS = 30_000L
 private const val BACK_SKIP_MS = 10_000L
+private const val SESSION_CLEAR_DEBOUNCE_MS = 800L
+private const val LOOP_CHECK_TOLERANCE_MS = 250L
 const val SESSION_MEDIA_ID_PREFIX = "session:"
 
 data class SessionInfo(
@@ -72,10 +78,29 @@ object ActiveMediaRepository {
 
     private var activeControllers: List<MediaController> = emptyList()
     private var currentController: MediaController? = null
+    // Compat view of the same session: the framework controller can't read or set repeat mode.
+    private var currentCompatController: MediaControllerCompat? = null
     private var activeSessionsListenerRegistered = false
     private var userSelectedPackageName: String? = null
     private var loopEnabled = false
+    private var repeatModeBeforeLoop = PlaybackStateCompat.REPEAT_MODE_NONE
     private var previousPlaybackState = PlaybackState.STATE_NONE
+    private var pendingSessionClearJob: Runnable? = null
+
+    // Fallback for apps that ignore the repeat-mode request: seek back to the start just before
+    // the track ends, so autoplay/queue advance (YouTube, YouTube Music) never kicks in.
+    private val loopCheckRunnable: Runnable = Runnable {
+        if (!loopEnabled || isNativeRepeatOneActive()) {
+            return@Runnable
+        }
+        val controller = currentController ?: return@Runnable
+        val waitMs = msUntilLoopRestart(controller) ?: return@Runnable
+        if (waitMs > LOOP_CHECK_TOLERANCE_MS) {
+            mainHandler.postDelayed(loopCheckRunnable, waitMs)
+        } else {
+            controller.transportControls.seekTo(0)
+        }
+    }
 
     private val activeSessionsChangedListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
         handleControllersChanged(controllers.orEmpty(), permissionGranted = isNotificationListenerEnabled())
@@ -84,16 +109,31 @@ object ActiveMediaRepository {
     private val controllerCallback = object : MediaController.Callback() {
         override fun onPlaybackStateChanged(state: PlaybackState?) {
             val newState = state?.state ?: PlaybackState.STATE_NONE
-            if (loopEnabled &&
-                previousPlaybackState == PlaybackState.STATE_PLAYING &&
-                newState == PlaybackState.STATE_STOPPED) {
-                mainHandler.postDelayed({ play() }, 300)
+            if (loopEnabled && previousPlaybackState == PlaybackState.STATE_PLAYING) {
+                val trackEnded = when (newState) {
+                    PlaybackState.STATE_STOPPED -> true
+                    PlaybackState.STATE_PAUSED -> {
+                        val position = state?.position ?: 0L
+                        val duration = currentController?.metadata
+                            ?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+                        duration > 0 && position >= duration - 500L
+                    }
+                    else -> false
+                }
+                if (trackEnded) {
+                    mainHandler.postDelayed({
+                        currentController?.transportControls?.seekTo(0)
+                        play()
+                    }, 300)
+                }
             }
             previousPlaybackState = newState
+            scheduleLoopCheck()
             publishCurrentState(permissionGranted = isNotificationListenerEnabled())
         }
 
         override fun onMetadataChanged(metadata: MediaMetadata?) {
+            scheduleLoopCheck()
             publishCurrentState(permissionGranted = isNotificationListenerEnabled())
         }
 
@@ -204,6 +244,8 @@ object ActiveMediaRepository {
 
     fun toggleLoop() {
         loopEnabled = !loopEnabled
+        applyNativeLoop(enabled = loopEnabled)
+        scheduleLoopCheck()
         publishCurrentState(permissionGranted = isNotificationListenerEnabled())
     }
 
@@ -233,8 +275,41 @@ object ActiveMediaRepository {
             ?.let { pkg -> externalControllers.find { it.packageName == pkg } }
             ?: run {
                 userSelectedPackageName = null
-                selectPreferredController(externalControllers)
+                // Stick with the current controller while it's still present and actively playing.
+                // This prevents transient sessions (system sounds, assistant, notifications) from
+                // temporarily outscoring the real player and causing a flicker mid-stream.
+                val current = currentController
+                val stickyController = if (current != null) {
+                    val stillPresent = externalControllers.any { it.sessionToken == current.sessionToken }
+                    val activelyPlaying = when (current.playbackState?.state) {
+                        PlaybackState.STATE_PLAYING,
+                        PlaybackState.STATE_BUFFERING,
+                        PlaybackState.STATE_CONNECTING -> true
+                        else -> false
+                    }
+                    if (stillPresent && activelyPlaying) current else null
+                } else null
+                stickyController ?: selectPreferredController(externalControllers)
             }
+
+        if (selectedController == null && currentController != null) {
+            // Session temporarily disappeared (e.g. YouTube track transition).
+            // Debounce the clear — if the session reappears within the window, skip the blank state.
+            if (pendingSessionClearJob == null) {
+                val runnable = Runnable {
+                    pendingSessionClearJob = null
+                    updateCurrentController(null)
+                    publishCurrentState(permissionGranted = permissionGranted)
+                }
+                pendingSessionClearJob = runnable
+                mainHandler.postDelayed(runnable, SESSION_CLEAR_DEBOUNCE_MS)
+            }
+            return
+        }
+
+        // Valid session found — cancel any pending clear and switch immediately.
+        pendingSessionClearJob?.let { mainHandler.removeCallbacks(it) }
+        pendingSessionClearJob = null
 
         updateCurrentController(selectedController)
         publishCurrentState(permissionGranted = permissionGranted)
@@ -340,11 +415,63 @@ object ActiveMediaRepository {
             return
         }
 
+        // Hand the loop over: give the old app its repeat mode back, then ask the new one to repeat.
+        if (loopEnabled) applyNativeLoop(enabled = false)
         currentController?.unregisterCallback(controllerCallback)
         currentController = newController
+        currentCompatController = newController?.let { controller ->
+            MediaControllerCompat(appContext, MediaSessionCompat.Token.fromToken(controller.sessionToken))
+        }
         currentController?.registerCallback(controllerCallback, mainHandler)
+        if (loopEnabled) applyNativeLoop(enabled = true)
         previousPlaybackState = PlaybackState.STATE_NONE
+        scheduleLoopCheck()
     }
+
+    // Repeat mode is a compat extension (custom action under the hood). Apps that support it
+    // (e.g. Media3/MediaSessionCompat players) loop seamlessly; the rest ignore it harmlessly.
+    private fun applyNativeLoop(enabled: Boolean) {
+        val compatController = currentCompatController ?: return
+        if (enabled) {
+            repeatModeBeforeLoop = compatController.repeatMode.takeIf { mode ->
+                mode != PlaybackStateCompat.REPEAT_MODE_INVALID && mode != PlaybackStateCompat.REPEAT_MODE_ONE
+            } ?: PlaybackStateCompat.REPEAT_MODE_NONE
+            compatController.transportControls.setRepeatMode(PlaybackStateCompat.REPEAT_MODE_ONE)
+        } else {
+            compatController.transportControls.setRepeatMode(repeatModeBeforeLoop)
+        }
+    }
+
+    private fun isNativeRepeatOneActive(): Boolean =
+        currentCompatController?.repeatMode == PlaybackStateCompat.REPEAT_MODE_ONE
+
+    private fun scheduleLoopCheck() {
+        mainHandler.removeCallbacks(loopCheckRunnable)
+        if (!loopEnabled) {
+            return
+        }
+        val waitMs = currentController?.let(::msUntilLoopRestart) ?: return
+        mainHandler.postDelayed(loopCheckRunnable, waitMs)
+    }
+
+    private fun msUntilLoopRestart(controller: MediaController): Long? {
+        val playbackState = controller.playbackState ?: return null
+        if (playbackState.state != PlaybackState.STATE_PLAYING) {
+            return null
+        }
+        val durationMs = controller.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: return null
+        val positionMs = livePositionMs(playbackState) ?: return null
+        return PlaybackTiming.msUntilLoopRestart(positionMs, durationMs, playbackState.playbackSpeed)
+    }
+
+    private fun livePositionMs(playbackState: PlaybackState): Long? =
+        PlaybackTiming.estimatePositionMs(
+            reportedPositionMs = playbackState.position,
+            lastUpdateTimeMs = playbackState.lastPositionUpdateTime,
+            playbackSpeed = playbackState.playbackSpeed,
+            nowMs = SystemClock.elapsedRealtime(),
+            isPlaying = playbackState.state == PlaybackState.STATE_PLAYING,
+        )
 
     private fun registerActiveSessionsListener() {
         if (activeSessionsListenerRegistered) {
@@ -431,8 +558,8 @@ object ActiveMediaRepository {
         val transportControls = controller.transportControls
 
         if (actions.hasAny(PlaybackState.ACTION_SEEK_TO)) {
-            val currentPosition = playbackState?.position ?: PlaybackState.PLAYBACK_POSITION_UNKNOWN
-            if (currentPosition != PlaybackState.PLAYBACK_POSITION_UNKNOWN) {
+            val currentPosition = playbackState?.let(::livePositionMs)
+            if (currentPosition != null) {
                 val newPosition = (currentPosition + deltaMillis).coerceAtLeast(0L)
                 transportControls.seekTo(newPosition)
                 return
