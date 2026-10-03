@@ -29,6 +29,13 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".settings.SettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_title"
+            android:parentActivityName=".MainActivity"
+            android:theme="@style/Theme.MQPlayer" />
+
         <service
             android:name=".media.ActiveSessionNotificationListener"
             android:enabled="true"
