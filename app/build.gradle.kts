@@ -6,17 +6,17 @@ plugins {
 android {
     namespace = "com.mqunibi.mqplayer"
     compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
+        version = release(37) {
+            minorApiLevel = 0
         }
     }
 
     defaultConfig {
         applicationId = "com.mqunibi.mqplayer"
         minSdk = 30
-        targetSdk = 36
-        versionCode = 3
-        versionName = "1.2.0"
+        targetSdk = 37
+        versionCode = 4
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -51,6 +51,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.media)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.compose.ui.text.google.fonts)
+    implementation(libs.androidx.palette)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
